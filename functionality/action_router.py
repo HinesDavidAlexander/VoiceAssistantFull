@@ -48,7 +48,7 @@ def string_to_dict(dict_string):
 
     return result_dict
 
-def get_action(user_message, command_dict):
+def get_action(user_message, command_dict) -> dict:
     commands_str = replace_callables_with_docstrings(command_dict)
     print(f"Commands String: {commands_str}")
     final_message = "I request the action: " + user_message + ". Select from the following options: " + str(commands_str)

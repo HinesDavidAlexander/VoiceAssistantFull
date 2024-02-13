@@ -11,7 +11,7 @@ class Search():
             query (str): input query to search for
 
         Returns:
-            _type_: _description_
+            Result: search results
         """
         result = f"Placeholder results for {query} using {Search.engine}"
         Search.history.append(query)

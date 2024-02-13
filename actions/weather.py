@@ -107,7 +107,7 @@ def get_weather():
     """Get the Weather data for the current location of the user at the current time.
 
     Returns:
-        _type_: _description_
+        Dict: Weather data as a dictionary
     """
     location = get_location(standalone=False)
     lat =location["loc"][0]

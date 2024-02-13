@@ -10,8 +10,9 @@ from actions.weather import get_weather, get_weather_forecast
 from actions.find_location import get_location
 from actions.lookup_query import Search
 
-# Import the action router
+# Import the funcitonalities
 from functionality.action_router import get_action
+from functionality.func_inspect import call_with_signature, has_args
 
 
 class App():
@@ -53,6 +54,8 @@ class App():
             self.gui.after(100, self.check_queue)
 
     def run_action(self):
+        
+        # Start Listening for Speech. Update the status label to reflect the current state of the speech recog
         self.status_label.configure(text=self.speech_recog.state)
         text = self.speech_recog.listen_for_speech()
         
@@ -64,14 +67,20 @@ class App():
         
         # Handle running the command
         if self.trigger_phrase in text:
+            # Get the command from the text
             user_command_req = text.split(self.trigger_phrase)[1].strip()
+            # Use LLM to pick the best action from the command dictionary
             action_selected_response = get_action(user_command_req, self.command_dict)
             
-            print(f"Action Selected Response: {action_selected_response}, type: {type(action_selected_response)}")
+            print(f"Action Selection Dict: {action_selected_response}, type: {type(action_selected_response)}")
             
+            # Traverse the LLM Return dict to find the action to run
             if "path" in action_selected_response.keys():
+                # Get the path to the action
                 key_nest_path = action_selected_response["path"]
+                # Deep copy the command dictionary to prevent changes to the original
                 running_dict = copy.deepcopy(self.command_dict)
+                
                 # Convert the running_dict to a callable through digging down into the nested dictionary
                 try:
                     for key in key_nest_path:
@@ -79,15 +88,31 @@ class App():
                 except KeyError as k:
                     print(f"Invalid Action Path. Key Error: {k}")
                     self.output_label.configure(text=f"Invalid Action Path. Key Error: {k}")
+                    return "No Action Found"
+                
+                # Rename the variable for clarity
+                final_callable = running_dict
                 
                 # Run the callable
-                if callable(running_dict):
-                    print(f"Running Action: {running_dict.__name__}")
-                    if "Args:" in running_dict.__doc__: #TODO: Change this to check if it's a class method or function, and have the rule that only methods can accept arguments, and functions cannot
+                if callable(final_callable):
+                    print(f"Running Action: {final_callable.__name__}")
+                    
+                    # Check if the function has arguments, if so, pass the user_command_req to the function (that should always be the input for the function, should be type str)
+                    if has_args(final_callable):
                         # Check if the function has arguments, if so, pass the user_command_req to the function (that should always be the input for the function, should be type str)
-                        action_return = running_dict(user_command_req)
+                        action_return = call_with_signature(final_callable, [user_command_req]) # TODO: This needs to not use final callable, or be wrapped? I don't know if this will stay once I have an LLM determine calling
                     else:
-                        action_return = running_dict()
+                        action_return = final_callable()
+                    
+                    
+                    
+                    # if "Args:" in final_callable.__doc__: #TODO: Change this to check if it's a class method or function, and have the rule that only methods can accept arguments, and functions cannot
+                    #     # Check if the function has arguments, if so, pass the user_command_req to the function (that should always be the input for the function, should be type str)
+                    #     action_return = final_callable(user_command_req)
+                    # else:
+                    #     action_return = final_callable()
+                    
+                    
                     # render the return to the GUI
                     self.output_label.configure(text=action_return)
         
@@ -97,7 +122,7 @@ class App():
 if __name__ == "__main__":
     # Initialize the command dictionary with function based actions
     commands = {"weather": {"Now":get_weather, "Forecast":get_weather_forecast}, "location": get_location, "search": Search.search}
-    
+    #call_with_signature(Search.search, ["New York"])
     app = App(command_dict=commands)
     # Add class based actions to the command dictionary
     app.command_dict | {}
