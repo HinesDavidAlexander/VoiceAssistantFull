@@ -1,4 +1,6 @@
-# My Home Assistant - 1 Day Project
+# My Home Assistant - Longer Term Project
+
+## README is currently inaccurate. Will change later.
 
 ## Overview
 
