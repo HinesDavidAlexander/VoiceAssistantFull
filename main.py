@@ -26,10 +26,14 @@ class App():
         self.start_button.pack()
         self.status_label = tk.CTkLabel(self.gui, text="Status...", pady=35)
         self.status_label.pack()
+        self.history_label = tk.CTkLabel(self.gui, text="Last thing you said...", pady=5)
+        self.history_label.pack()
         self.output_label = tk.CTkLabel(self.gui, text="Readout here...", pady=35)
         self.output_label.pack()
         self.thread = None
         self.state_queue = queue.Queue()
+        self.command_queue = queue.Queue()
+        self.gui_queue = queue.Queue()
         
         self.trigger_phrase = "run command"
         self.command_dict = command_dict
@@ -42,28 +46,91 @@ class App():
             self.thread.start()
             self.check_queue()
 
-    def check_queue(self):
+    def _check_state_queue(self):
+        """Check the state queue for new state messages. This will always update the status label with the most recent state, nothing else.
+        """
+        # Check the state queue for new state messages. This will always update the status label with the most recent state, nothing else.
         try:
-            state = self.state_queue.get_nowait()  # Non-blocking check of the queue
-            self.status_label.configure(text=state)  # Update the label with the new state
-            #print(f'GUI: Reflecting state change to {state}')
+            state_msg = self.state_queue.get_nowait()  # Non-blocking check of the queue
+            self.status_label.configure(text=state_msg)  # Update the label with the new state
+            print(f'GUI: Reflecting state change to {state_msg}')
         except queue.Empty:
             pass  # No new state, do nothing
 
+    def _check_command_queue(self):
+        # Check the command queue for new commands
+        try:
+            command_msg = self.command_queue.get_nowait()  # Non-blocking check of the queue
+            print(f'GUI: On command_queue - Received command: {command_msg}')
+        except queue.Empty:
+            pass  # No new state, do nothing
+
+    def _check_gui_queue(self):
+        # Check the gui queue for new commands
+        try:
+            action, element, value = self.gui_queue.get_nowait()  # Non-blocking check of the queue
+            print(f'GUI: On gui_queue - Received action: {action}, element: {element}, value: {value}')
+            if action == "update":
+                element_obj = getattr(self, element)
+                try:
+                    element_obj.configure(text=value)
+                except Exception as e:
+                    print(f'GUI: Error updating element: {e}')
+        except queue.Empty:
+            pass
+
+    def check_queue(self):
+        # NOTE: Currently each queue processes only one item per call of this function. This can be changed to have it loop through each queue and process all items in each queue. Not sure which is better yet.
+        
+        self._check_state_queue()
+        
+        self._check_command_queue()
+        
+        self._check_gui_queue()
+
+        # Check the queue again in 100ms (recursive call to this function)
         if self.thread is not None and self.thread.is_alive():
             self.gui.after(100, self.check_queue)
+
+    def send_gui_update(self, action, element, value):
+        """Send a message to the GUI to update an element with a new value.
+
+        Args:
+            action (str): action for the GUI to take
+            element (str): element to update
+            value (any): new value for the element
+        """
+        self.gui_queue.put((action, element, value))
+    
+    def send_command(self, command):
+        """Send a command to the command queue. NOTE: _check_command_queue is not implemented yet, therefore none of the commands will be processed.
+
+        Args:
+            command (any): command to send to the command queue
+        """
+        self.command_queue.put(command)
+    
+    def send_state(self, state):
+        """Send a state message to the state queue.
+
+        Args:
+            state (str): state message to send
+        """
+        self.state_queue.put(state)
 
     def run_action(self):
         
         # Start Listening for Speech. Update the status label to reflect the current state of the speech recog
-        self.status_label.configure(text=self.speech_recog.state)
+        self.send_state(self.speech_recog.state)
+        #self.status_label.configure(text=self.speech_recog.state)
         text = self.speech_recog.listen_for_speech()
         
         
         # Handle Printing the understood text to the gui
         time.sleep(0.11) # sleep longer than the next tick of the "check_queue" function
         final_text = "You said: " + text
-        self.status_label.configure(text=final_text)
+        self.send_gui_update("update", "history_label", final_text)
+        #self.status_label.configure(text=final_text)
         
         # Handle running the command
         if self.trigger_phrase in text:
@@ -87,7 +154,8 @@ class App():
                         running_dict = running_dict[key]
                 except KeyError as k:
                     print(f"Invalid Action Path. Key Error: {k}")
-                    self.output_label.configure(text=f"Invalid Action Path. Key Error: {k}")
+                    self.send_gui_update("update", "output_label", f"Invalid Action Path. Key Error: {k}")
+                    #self.output_label.configure(text=f"Invalid Action Path. Key Error: {k}")
                     return "No Action Found"
                 
                 # Rename the variable for clarity
@@ -114,7 +182,8 @@ class App():
                     
                     
                     # render the return to the GUI
-                    self.output_label.configure(text=action_return)
+                    self.send_gui_update("update", "output_label", action_return)
+                    #self.output_label.configure(text=action_return)
         
         self.thread = None
         return
