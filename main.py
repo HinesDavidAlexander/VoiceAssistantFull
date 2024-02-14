@@ -123,7 +123,8 @@ class App():
     def run_action(self) -> tuple[bool, any]:
         
         # Start Listening for Speech. Update the status label to reflect the current state of the speech recog
-        self.send_state(self.speech_recog.state)
+        self.send_state("Starting...")
+        #self.send_state(self.speech_recog.state)
         #self.status_label.configure(text=self.speech_recog.state)
         text = self.speech_recog.listen_for_speech()
         
@@ -201,6 +202,7 @@ class App():
         self.send_gui_update("update", "output_label", f"Followup Text: {followup_text}")
         self.send_gui_update("update", "history_label", f"You Said: {followup_text}")
         
+        #TODO: NOTE: When implementing this, make sure there's a "new conversation" verbal option that starts over with the self.run_action() call and resets the memory of the LLM.
     
     def manage_conversation(self):
         """Handle the conversation so that it times out after 15 seconds, otherwise it will listen and run the action if the trigger phrase is said.
@@ -210,31 +212,31 @@ class App():
         # Short Circuit if no action was run, therefore no need to continue the conversation
         if not action_run:
             print("No action was run during initial listen, ending...")
-            self.send_state(f"{self.speech_recog.state} No action was run during initial listen, ending...")
+            self.send_state(f"{self.speech_recog.state} No action run.")
             self.thread = None
             return
         
         
         conversation_timer = Timer(15)
         while True:
-            followup_text = self.speech_recog.listen_for_set_time(15)
+            followup_text = self.speech_recog.listen_for_set_time(10)
             if self.followup_phrase in followup_text.lower():
                 followup_req = followup_text.split(self.followup_phrase)[1].strip()
                 self.handle_followup(followup_req)
                 conversation_timer.reset()
             elif followup_text == "":
                 print("Conversation Timed Out due to lack of Mic input.")
-                self.send_state(f"{self.speech_recog.state} Timeout from lack of Mic input.")
+                self.send_state(f"{self.speech_recog.state} due to Timeout.")
                 break
             elif followup_text == "error":
                 if conversation_timer.has_expired():
-                    print("Conversation Timed Out due to timer expiring after error with audio recognition.")
-                    self.send_state(f"{self.speech_recog.state} Timeout from timer expiring after error with audio recognition.")
+                    print(f"Conversation Timed Out due to timer expiring after error with audio recognition. {self.speech_recog.state}")
+                    self.send_state("Conversation timed out due to error with audio recognition.")
                     break
             else:
                 if conversation_timer.has_expired():
                     print("Conversation Timed Out due to timer expiring.")
-                    self.send_state(f"{self.speech_recog.state} Timeout from timer expiring.")
+                    self.send_state(f"{self.speech_recog.state} at Timer=0.")
                     break
         
         self.thread = None

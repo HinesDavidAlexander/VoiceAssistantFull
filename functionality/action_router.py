@@ -50,8 +50,8 @@ def string_to_dict(dict_string):
 
 def get_action(user_message, command_dict) -> dict:
     commands_str = replace_callables_with_docstrings(command_dict)
-    print(f"Commands String: {commands_str}")
-    final_message = "I request the action: " + user_message + ". Select from the following options: " + str(commands_str)
+    print(f"Commands String: {str(commands_str).strip()}")
+    final_message = "I request the action: " + user_message + ". Select from the following options: " + str(commands_str).strip()
     response = client.chat.completions.create(
         model="gpt-3.5-turbo-0125",
         response_format={ "type": "json_object" },

@@ -14,7 +14,17 @@ def call_with_signature(func, args):
         any: func called with the provided args
     """
     
+    to_bind = False
+    
     signature = inspect.signature(func)
+    params = signature.parameters
+    for param in params.values():
+        if param.annotation == str or param.name == "query":
+            to_bind = True
+            break
+    
+    if not to_bind:
+        return func()
     bound_args = None
     try:
         bound_args = signature.bind(*args)

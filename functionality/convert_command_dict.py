@@ -30,7 +30,7 @@ def process_docstring(docstring: str) -> str:
     if "Returns:" in docstring:
         return docstring.split("Returns:")[0].strip()
 
-def replace_callables_with_docstrings(d):
+def replace_callables_with_docstrings(d) -> dict:
     """
     Recursively traverses a dictionary, creating a new dictionary where any callable item is replaced with its docstring.
     
