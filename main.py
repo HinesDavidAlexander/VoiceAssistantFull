@@ -13,6 +13,7 @@ from actions.lookup_query import Search
 # Import the funcitonalities
 from functionality.action_router import get_action
 from functionality.func_inspect import call_with_signature, has_args
+from functionality.timer import Timer
 
 
 class App():
@@ -36,13 +37,14 @@ class App():
         self.gui_queue = queue.Queue()
         
         self.trigger_phrase = "run command"
+        self.followup_phrase = "next command"
         self.command_dict = command_dict
         
-        self.speech_recog = SpeechRecog(self.state_queue)
+        self.speech_recog = SpeechRecog(self.state_queue) #TODO: Does not need queue, it doesn't use it. Need to change this
 
     def start(self):
         if self.thread is None:
-            self.thread = threading.Thread(target=self.run_action)
+            self.thread = threading.Thread(target=self.manage_conversation)
             self.thread.start()
             self.check_queue()
 
@@ -118,7 +120,7 @@ class App():
         """
         self.state_queue.put(state)
 
-    def run_action(self):
+    def run_action(self) -> tuple[bool, any]:
         
         # Start Listening for Speech. Update the status label to reflect the current state of the speech recog
         self.send_state(self.speech_recog.state)
@@ -156,7 +158,7 @@ class App():
                     print(f"Invalid Action Path. Key Error: {k}")
                     self.send_gui_update("update", "output_label", f"Invalid Action Path. Key Error: {k}")
                     #self.output_label.configure(text=f"Invalid Action Path. Key Error: {k}")
-                    return "No Action Found"
+                    return False, None
                 
                 # Rename the variable for clarity
                 final_callable = running_dict
@@ -184,6 +186,56 @@ class App():
                     # render the return to the GUI
                     self.send_gui_update("update", "output_label", action_return)
                     #self.output_label.configure(text=action_return)
+                    return True, action_return
+        
+        #self.thread = None
+        return False, None
+    
+    def handle_followup(self, followup_text: str):
+        """LLM will handle the followup text and determine if the conversation should continue or not.
+
+        Args:
+            followup_text (str): followup text from the user
+        """
+        print(f"Followup Text: {followup_text}")
+        self.send_gui_update("update", "output_label", f"Followup Text: {followup_text}")
+        self.send_gui_update("update", "history_label", f"You Said: {followup_text}")
+        
+    
+    def manage_conversation(self):
+        """Handle the conversation so that it times out after 15 seconds, otherwise it will listen and run the action if the trigger phrase is said.
+        """
+        action_run, action_return = self.run_action()
+        
+        # Short Circuit if no action was run, therefore no need to continue the conversation
+        if not action_run:
+            print("No action was run during initial listen, ending...")
+            self.send_state(f"{self.speech_recog.state} No action was run during initial listen, ending...")
+            self.thread = None
+            return
+        
+        
+        conversation_timer = Timer(15)
+        while True:
+            followup_text = self.speech_recog.listen_for_set_time(15)
+            if self.followup_phrase in followup_text.lower():
+                followup_req = followup_text.split(self.followup_phrase)[1].strip()
+                self.handle_followup(followup_req)
+                conversation_timer.reset()
+            elif followup_text == "":
+                print("Conversation Timed Out due to lack of Mic input.")
+                self.send_state(f"{self.speech_recog.state} Timeout from lack of Mic input.")
+                break
+            elif followup_text == "error":
+                if conversation_timer.has_expired():
+                    print("Conversation Timed Out due to timer expiring after error with audio recognition.")
+                    self.send_state(f"{self.speech_recog.state} Timeout from timer expiring after error with audio recognition.")
+                    break
+            else:
+                if conversation_timer.has_expired():
+                    print("Conversation Timed Out due to timer expiring.")
+                    self.send_state(f"{self.speech_recog.state} Timeout from timer expiring.")
+                    break
         
         self.thread = None
         return
@@ -191,7 +243,7 @@ class App():
 if __name__ == "__main__":
     # Initialize the command dictionary with function based actions
     commands = {"weather": {"Now":get_weather, "Forecast":get_weather_forecast}, "location": get_location, "search": Search.search}
-    #call_with_signature(Search.search, ["New York"])
+    # Create the app
     app = App(command_dict=commands)
     # Add class based actions to the command dictionary
     app.command_dict | {}
