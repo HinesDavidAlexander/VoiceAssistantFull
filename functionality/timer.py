@@ -13,3 +13,6 @@ class Timer:
     
     def time_remaining(self):
         return self.timeout - (time.time() - self.start_time)
+    
+    def set_time_remaining(self, time_remaining):
+        self.start_time = time.time() - (self.timeout - time_remaining)

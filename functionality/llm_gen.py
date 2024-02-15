@@ -1,18 +1,27 @@
 from openai import OpenAI
 import json
+import os
+from functionality.utils import save_json_to_csv, read_csv_to_json
 
+OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 class LLM:
-    def __init__(self, api_key, log_file_path, system_prompt):
+    def __init__(self, log_file_path, system_prompt):
         self.client = OpenAI()
         self.system_prompt = system_prompt
-        self.api_key = api_key
         self.running_memory = []  # List to store conversation logs
         self.update_memory("system", self.system_prompt) # Must be called to include system prompt 
         self.log_file_path = log_file_path
-        self.client.api_key = self.api_key
 
     def ask(self, prompt, **kwargs):
-        """Interact with the OpenAI API using the provided prompt and kwargs."""
+        """Interact with the OpenAI API using the provided prompt and kwargs. This function automatically updates the running memory with the query(prompt) and response.
+
+        Args:
+            prompt (str): query to be sent to the model
+            kwargs: additional parameters to be passed to the model's .create() method
+
+        Returns:
+            str: model response based on the query and running memory
+        """
         # Default settings
         default_settings = {
             "model": "gpt-3.5-turbo-0125",  # Use the specified model as the default
@@ -24,11 +33,15 @@ class LLM:
         # Update default settings with any provided kwargs
         settings = {**default_settings, **kwargs}
         
-        # Pass kwargs directly to the Completion.create() call
-        response = self.client.chat.completions.create(**settings, messages=self.running_memory + [{"role": "user", "content": prompt}])
+        # Add the latest prompt to the running memory. This is what the model will respond to.
         self.update_memory("user", prompt)
-        self.update_memory("assistant", response.choices[0].text.strip())
-        return response.choices[0].text.strip()
+        
+        # Pass kwargs directly to the completions.create() call
+        response = self.client.chat.completions.create(**settings, messages=self.running_memory)
+        
+        # Add the model response to the running memory
+        self.update_memory("assistant", response.choices[0].message.content.strip())
+        return response.choices[0].message.content.strip()
 
     def update_memory(self, role, content):
         """Update the running memory with the prompt and response."""
@@ -37,30 +50,32 @@ class LLM:
 
     def save_memory_to_file(self):
         """Save the running memory to a file."""
-        json.dump(self.running_memory, open(self.log_file_path, 'w'))
-        # with open(self.log_file_path, 'w') as file:
-        #     for entry in self.running_memory:
-        #         file.write(f"Prompt: {entry['prompt']}\n")
-        #         file.write(f"Response: {entry['response']}\n\n")
+        save_json_to_csv(self.running_memory, self.log_file_path)
 
     def close(self):
         """Save the conversation log and perform any cleanup before closing."""
-        self.save_memory_to_file()
-        # Perform any other necessary cleanup
+        if len(self.running_memory) > 1:
+            self.save_memory_to_file()
+            # Perform any other necessary cleanup
     
     def new_memory(self):
-        """Clear the running memory."""
-        self.save_memory_to_file()
-        self.running_memory = []
-        self.update_memory("system", self.system_prompt)
+        """Save running memory to a file and clear the running memory, then update the memory with the system prompt."""
+        if len(self.running_memory) > 1: # Only save if there is a conversation, not just the system prompt
+            self.save_memory_to_file()
+            self.running_memory = []
+            self.update_memory("system", self.system_prompt)
+        else:
+            print("No conversation to save, only system prompt was in memory. No file was saved.")
+            self.running_memory = []
+            self.update_memory("system", self.system_prompt)
     
     def __del__(self):
         """Destructor to ensure that the log is saved when the object is deleted."""
         self.close()
 
-# Usage example:
-# llm = LLM(api_key='your_openai_api_key_here', log_file_path='conversation_log.txt')
-# Use the ask method with additional parameters as needed
-# response = llm.ask("What is the capital of France?", engine="text-davinci-003", temperature=0.7)
+# # Usage example:
+# llm = LLM(log_file_path='conversation_log.csv', system_prompt='You are an assistant designed to help users with their queries. Please answer to the best of your ability.')
+# # Use the ask method with additional parameters as needed
+# response = llm.ask("")
 # print(response)
 # llm.close()  # Make sure to call this when you're done to save the log
